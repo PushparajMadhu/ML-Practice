@@ -1,1 +1,13 @@
+Level	Pattern Type	Description	Result
+Level 1	Name Duplicate	Same name repeated	Duplicates
+Level 2	Non-blank Duplicate	Same non-blank DOB repeated	Duplicates
+Level 2	Blank Duplicate	Blank DOB repeated	Duplicates
+Level 2	Unique Non-blank + Blank Exists	DOB non-blank appears once, and one blank DOB exists for same name	Duplicates
+Level 2	Unique Non-blank + Blank Exists	DOB non-blank appears once, and blank DOB repeat exists for same name	Duplicates
+Level 2	Unique Non-blank + No Blank	DOB non-blank appears once, and no blank DOB exists for same name	Non-Duplicates
+Level 2	Unique Blank + Non-blank Exists	DOB blank appears once, and one non-blank DOB exists for same name	Duplicates
+Level 2	Unique Blank + Non-blank Exists	DOB blank appears once, and non-blank DOB repeat exists for same name	Duplicates
+Level 2	Unique Blank + No Non-blank	DOB blank appears once, and no non-blank DOB for same name	Non-Duplicates
+
+
 testfile
