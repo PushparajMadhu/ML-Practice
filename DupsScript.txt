@@ -1,0 +1,307 @@
+import pandas as pd
+import numpy as np
+import random
+import hashlib
+
+# =====================================================================
+# PART 1: TEST DATASET GENERATOR (WITH FIXED SCENARIO 7 UNIQUE NAMES)
+# =====================================================================
+print("Generating 200-record Test Dataset...")
+
+# Set random seed for repeatability
+random.seed(42)
+test_data = []
+
+# --- SCENARIO 1: Pure Exclusions (Module 1) — Target: 15 records ---
+for i in range(5):
+    test_data.append({"person_name": f"123456{i}", "date_of_birth": "20000101", "national_id": f"ID_NUM_{i}", "domicile_country": "US"})
+for i in range(5):
+    test_data.append({"person_name": " " * (i + 2), "date_of_birth": "19950812", "national_id": f"ID_SPC_{i}", "domicile_country": "CA"})
+for i in range(5):
+    test_data.append({"person_name": "!@#$" * (i + 1), "date_of_birth": "19921130", "national_id": f"ID_SYM_{i}", "domicile_country": "UK"})
+
+# --- SCENARIO 2: Substring Matching & DOB logic (Module 2.5 & 6) — Target: 30 records ---
+for i in range(10):
+    test_data.append({"person_name": "John Smit", "date_of_birth": "20171209", "national_id": "JS100", "domicile_country": "US"})
+for i in range(10):
+    test_data.append({"person_name": "John", "date_of_birth": "20171209", "national_id": "JS100", "domicile_country": "US"})
+for i in range(10):
+    test_data.append({"person_name": "John", "date_of_birth": "", "national_id": "JS100", "domicile_country": "US"})
+
+# --- SCENARIO 3: Substring Conflict Check (Module 2.5) — Target: 20 records ---
+for _ in range(10):
+    test_data.append({"person_name": "Jane Miller", "date_of_birth": "19850412", "national_id": "JM200", "domicile_country": "DE"})
+for _ in range(10):
+    test_data.append({"person_name": "Jane", "date_of_birth": "19901030", "national_id": "JN900", "domicile_country": "FR"})
+
+# --- SCENARIO 4: Blank DOB Overwrites (Rule 3 vs Rule 4) — Target: 40 records ---
+# Case A: Only 1 unique valid DOB + Blanks (Rule 3 -> 'Duplicate') [20 records]
+for _ in range(10):
+    test_data.append({"person_name": "Alice Green", "date_of_birth": "19910520", "national_id": "AG300", "domicile_country": "UK"})
+for _ in range(10):
+    test_data.append({"person_name": "Alice Green", "date_of_birth": "", "national_id": "AG300", "domicile_country": "UK"})
+
+# Case B: Multiple conflicting valid DOBs + Blanks (Rule 4 -> 'Potential Duplicate') [20 records]
+for _ in range(8):
+    test_data.append({"person_name": "Bob Taylor", "date_of_birth": "19880115", "national_id": "BT400", "domicile_country": "AU"})
+for _ in range(8):
+    test_data.append({"person_name": "Bob Taylor", "date_of_birth": "19830722", "national_id": "BT401", "domicile_country": "AU"})
+for _ in range(4):
+    test_data.append({"person_name": "Bob Taylor", "date_of_birth": "", "national_id": "BT400", "domicile_country": "AU"})
+
+# --- SCENARIO 5: Multi-Field Splitting & Suffixing (Module 6.5) — Target: 50 records ---
+for _ in range(15):
+    test_data.append({"person_name": "Charlie Mix", "date_of_birth": "19900101", "national_id": "ID_A", "domicile_country": "US"})
+for _ in range(15):
+    test_data.append({"person_name": "Charlie Mix", "date_of_birth": "19900101", "national_id": "ID_B", "domicile_country": "CA"})
+for _ in range(8):
+    test_data.append({"person_name": "Charlie Mix", "date_of_birth": "19900101", "national_id": "", "domicile_country": "US"})
+for _ in range(8):
+    test_data.append({"person_name": "Charlie Mix", "date_of_birth": "19900101", "national_id": "ID_A", "domicile_country": ""})
+for _ in range(4):
+    test_data.append({"person_name": "Charlie Mix", "date_of_birth": "19900101", "national_id": "", "domicile_country": ""})
+
+# --- SCENARIO 6: Unique Found During Multi-Field Split — Target: 15 records ---
+for _ in range(14):
+    test_data.append({"person_name": "David Ross", "date_of_birth": "19750618", "national_id": "DR777", "domicile_country": "NZ"})
+test_data.append({"person_name": "David Ross", "date_of_birth": "19750618", "national_id": "DR999", "domicile_country": "SG"})
+
+# --- SCENARIO 7: Clean Standalone Out-Scope Records — Target: 28 records ---
+# FIX: Using completely unique, distinct base names so they do not clean down to "cleanuniqueuser"
+unique_names_list = [
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet", 
+    "Kilo", "Lima", "Mike", "November", "Oscar", "Papa", "Quebec", "Romeo", "Sierra", "Tango", 
+    "Uniform", "Victor", "Whiskey", "Xray", "Yankee", "Zulu", "Abel", "Baker"
+]
+for i in range(28):
+    test_data.append({
+        "person_name": f"{unique_names_list[i]} Standalone", 
+        "date_of_birth": f"1960{i:02d}01" if i < 12 else "19700101", 
+        "national_id": f"UNI_{i}", 
+        "domicile_country": "US" if i % 2 == 0 else "IN"
+    })
+
+# Create base dataframe
+df = pd.DataFrame(test_data)
+
+# Inject two raw NaN/NaT cases for "Agent FortySeven" to hit 200 total records
+df.loc[len(df)] = {"person_name": "Agent FortySeven", "date_of_birth": np.nan, "national_id": "A47", "domicile_country": "UK"}
+df.loc[len(df)] = {"person_name": "Agent FortySeven", "date_of_birth": "NaT", "national_id": "A47", "domicile_country": "UK"}
+
+# Shuffle dataset slightly to simulate real-world database ingestion order
+df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+print(f"Dataset compiled! Total verified rows: {len(df)}\n")
+
+
+# =====================================================================
+# MODULE 1: NAME TEXT CLEANING & FILTERS
+# =====================================================================
+print("Executing Module 1...")
+df['name_cleaned'] = df['person_name'].str.replace(r'[^a-zA-Z]', '', regex=True).str.lower()
+excluded_df = df[df['name_cleaned'] == ''].copy()
+cleaned_df = df[df['name_cleaned'] != ''].copy()
+print(f"  -> Step 1.4 Done: Purely numeric/empty items filtered. Remaining count: {len(cleaned_df)}")
+
+
+# =====================================================================
+# MODULE 2: NULL / NAN DOB & MATCHING COLUMNS STANDARDISATION
+# =====================================================================
+print("\nExecuting Module 2...")
+cleaned_df['date_of_birth'] = cleaned_df['date_of_birth'].fillna('').astype(str).replace(['nan', 'NaN', 'None', 'NAT', 'NaT'], '')
+cleaned_df['national_id'] = cleaned_df['national_id'].fillna('').astype(str).replace(['nan', 'NaN', 'None'], '').str.strip()
+cleaned_df['domicile_country'] = cleaned_df['domicile_country'].fillna('').astype(str).replace(['nan', 'NaN', 'None'], '').str.strip().str.upper()
+print(f"  -> Step 2.3 Done: Standardizations complete. Shape: {cleaned_df.shape}")
+
+
+# =====================================================================
+# MODULE 2.5: SUBSTRING MATCHING ALIGNMENT (Name & DOB Compatibility)
+# =====================================================================
+print("\nExecuting Module 2.5...")
+cleaned_df['name_matched'] = cleaned_df['name_cleaned']
+unique_names = sorted(cleaned_df['name_cleaned'].unique(), key=len, reverse=True)
+
+for i, longer_name in enumerate(unique_names):
+    for shorter_name in unique_names[i+1:]:
+        if shorter_name in longer_name:
+            longer_subset = cleaned_df[cleaned_df['name_cleaned'] == longer_name]
+            shorter_subset = cleaned_df[cleaned_df['name_cleaned'] == shorter_name]
+            
+            longer_dobs = set(longer_subset['date_of_birth'].unique())
+            shorter_dobs = set(shorter_subset['date_of_birth'].unique())
+            
+            has_blank_overlap = '' in longer_dobs or '' in shorter_dobs
+            has_matching_dob = len(longer_dobs.intersection(shorter_dobs).difference({''})) > 0
+            
+            if has_matching_dob or has_blank_overlap or (longer_dobs == {''} and shorter_dobs == {''}):
+                cleaned_df.loc[cleaned_df['name_cleaned'] == shorter_name, 'name_matched'] = longer_name
+print("  -> Step 2.5 Done: Substring name alignment completed.")
+
+
+# =====================================================================
+# MODULE 3: GROUP COUNT SEPARATION BY ALIGNED NAME
+# =====================================================================
+print("\nExecuting Module 3...")
+cleaned_df['group_count'] = cleaned_df.groupby('name_matched')['name_matched'].transform('count')
+grouped_df = cleaned_df[cleaned_df['group_count'] > 1].copy().drop(columns=['group_count'])
+separated_df = cleaned_df[cleaned_df['group_count'] <= 1].copy().drop(columns=['group_count'])
+print("  -> Step 3.3 Done: Separation processing completed.")
+
+
+# =====================================================================
+# MODULE 5: PARENT CLUSTER GENERATION (NAME + DOB HASH)
+# =====================================================================
+print("\nExecuting Module 5...")
+def generate_base_id(row):
+    unique_string = f"{row['name_matched']}_{row['date_of_birth']}"
+    hash_int = int(hashlib.md5(unique_string.encode('utf-8')).hexdigest(), 16)
+    return str(hash_int % 1000000).zfill(6)
+
+grouped_df['cluster_id'] = grouped_df.apply(generate_base_id, axis=1)
+grouped_df['Dup_Result'] = 'Duplicate'
+grouped_df = grouped_df.sort_values(by='cluster_id').reset_index(drop=True)
+print(f"  -> Step 5.2 Done: Base cluster IDs created.")
+
+
+# =====================================================================
+# MODULE 6: BLANK DOB TO PARENT CLUSTER MAPPING
+# =====================================================================
+print("\nExecuting Module 6...")
+final_processed_rows = []
+for name, group in grouped_df.groupby('name_matched'):
+    group = group.copy()
+    parent_records = group[group['date_of_birth'] != '']
+    
+    if not parent_records.empty and (group['date_of_birth'] == '').any():
+        parent_cluster_id = parent_records['cluster_id'].values[0]
+        num_valid_dobs = parent_records['date_of_birth'].nunique()
+        result_label = 'Potential Duplicate' if num_valid_dobs >= 2 else 'Duplicate'
+        
+        group.loc[group['date_of_birth'] == '', 'cluster_id'] = parent_cluster_id
+        group.loc[group['date_of_birth'] == '', 'Dup_Result'] = result_label
+    final_processed_rows.append(group)
+
+final_grouped_df = pd.concat(final_processed_rows, ignore_index=True)
+print("  -> Step 6.1 Done: Blank DOB records mapped.")
+
+
+# =====================================================================
+# MODULE 6.3: NATIONAL ID MATCHING & IN-SCOPE LOCK-IN
+# =====================================================================
+print("\nExecuting Module 6.3...")
+nat_id_mapped_rows = []
+for cid, group in final_grouped_df.groupby('cluster_id'):
+    group = group.copy()
+    parent_records = group[group['national_id'] != '']
+    
+    if not parent_records.empty and (group['national_id'] == '').any():
+        num_valid_ids = parent_records['national_id'].nunique()
+        result_label = 'Potential Duplicate' if num_valid_ids >= 2 else 'Duplicate'
+        group.loc[group['national_id'] == '', 'Dup_Result'] = result_label
+    nat_id_mapped_rows.append(group)
+
+final_grouped_df = pd.concat(nat_id_mapped_rows, ignore_index=True)
+
+# LOCK IN BOUNDARY HERE: Mark initially In-Scope records strictly before Domicile Country checks
+final_grouped_df['post_national_id_count'] = final_grouped_df.groupby('cluster_id')['cluster_id'].transform('count')
+final_grouped_df['is_originally_inscope'] = final_grouped_df['post_national_id_count'] > 1
+final_grouped_df = final_grouped_df.drop(columns=['post_national_id_count'])
+print("  -> Step 6.3 Done: Boundary lock complete.")
+
+
+# =====================================================================
+# MODULE 6.5: DOMICILE COUNTRY SPLITTING & BLANK RESOLUTION
+# =====================================================================
+print("\nExecuting Module 6.5...")
+split_processed_rows = []
+for orig_id, group in final_grouped_df.groupby('cluster_id'):
+    group = group.copy()
+    
+    non_blank_pairs = group[
+        (group['national_id'] != '') & (group['domicile_country'] != '')
+    ][['national_id', 'domicile_country']].drop_duplicates()
+    
+    num_unique_keys = len(non_blank_pairs)
+    
+    if num_unique_keys > 1:
+        pair_to_suffix = {}
+        for idx, (_, row_vals) in enumerate(non_blank_pairs.iterrows(), start=1):
+            pair_to_suffix[(row_vals['national_id'], row_vals['domicile_country'])] = f"{orig_id}_{idx}"
+            
+        for pair, sub_id in pair_to_suffix.items():
+            mask = (group['national_id'] == pair[0]) & (group['domicile_country'] == pair[1])
+            group.loc[mask, 'cluster_id'] = sub_id
+            
+        blank_mask = (group['national_id'] == '') | (group['domicile_country'] == '')
+        if blank_mask.any():
+            first_sub_id = list(pair_to_suffix.values())[0]
+            group.loc[blank_mask, 'cluster_id'] = first_sub_id
+            group.loc[blank_mask, 'Dup_Result'] = 'Potential Duplicate'
+            
+    else:
+        if num_unique_keys == 1:
+            blank_mask = (group['national_id'] == '') | (group['domicile_country'] == '')
+            if blank_mask.any():
+                group.loc[blank_mask, 'Dup_Result'] = 'Duplicate'
+    split_processed_rows.append(group)
+
+final_grouped_df = pd.concat(split_processed_rows, ignore_index=True)
+final_grouped_df['cluster_count'] = final_grouped_df.groupby('cluster_id')['cluster_id'].transform('count')
+final_grouped_df = final_grouped_df.sort_values(by='cluster_id').reset_index(drop=True)
+print("  -> Step 6.5 Done: Splits executed. Preserved In-Scope indicators.")
+
+
+# =====================================================================
+# MODULE 7: SCOPE FILTERS & FINAL SEPARATION
+# =====================================================================
+print("\nExecuting Module 7...")
+# Evaluation check: Preserve record if current cluster_count > 1 OR if locked in as In-Scope beforehand
+inscope_mask = (final_grouped_df['cluster_count'] > 1) | (final_grouped_df['is_originally_inscope'] == True)
+
+inscope_cluster_df = final_grouped_df[inscope_mask].copy()
+outscope_cluster_df = final_grouped_df[~inscope_mask].copy()
+
+inscope_cluster_df = inscope_cluster_df.drop(columns=['is_originally_inscope'])
+outscope_cluster_df = outscope_cluster_df.drop(columns=['is_originally_inscope'])
+print("  -> Step 7.2 Done: Clean separation executed.")
+
+
+# =====================================================================
+# FINAL EXECUTION SUMMARY REPORT
+# =====================================================================
+print("\n" + "="*40)
+print("  FINAL EXECUTION RESULTS")
+print("="*40)
+print(f"• In-Scope Clusters DataFrame Shape   : {inscope_cluster_df.shape}")
+print(f"• Out-Scope Clusters DataFrame Shape  : {outscope_cluster_df.shape} (No Scope)")
+
+print("\n--- [Preview] David Ross Preservation Verification ---")
+print(inscope_cluster_df[inscope_cluster_df['name_matched']=='davidross'][['cluster_id', 'cluster_count', 'person_name', 'national_id', 'domicile_country']])
+
+
+
+
+
+### The Core Logic (Module-by-Module)
+
+* **Clean Names:** Removes numbers, spaces, and symbols, then converts names to lowercase.
+* **Remove Trash:** Drops records where the cleaned name ends up completely empty.
+* **Fix Blanks:** Standardizes all empty fields, `NaN`, and `NaT` to a blank string `''`.
+* **Match Nicknames:** Groups short names with longer names if they are substrings and have matching or blank DOBs.
+* **Separate Uniques:** Immediately splits completely unique names away from potential duplicate groups.
+* **Group by DOB:** Generates a 6-digit Cluster ID using the matched name and DOB.
+* **Fill Blank DOBs:** Maps blank DOBs to their matching parent cluster as a `Duplicate` (if 1 valid parent DOB) or `Potential Duplicate` (if 2+ conflicting parent DOBs).
+* **Lock-In Scope:** Flags and locks records as **In-Scope** right after checking Name, DOB, and National ID—*before* any country split.
+* **Split Countries:** Splits clusters into sub-clusters (e.g., `_1`, `_2`) if they contain different countries or IDs.
+* **Preserve In-Scope:** Keeps split records in the final in-scope duplicates list even if the country split isolates them to a group size of 1.
+
+---
+
+### The Test Scenarios
+
+* **Scenario 1:** Tests that invalid names (only numbers/symbols) are dropped.
+* **Scenario 2:** Tests that nickname variations are successfully merged.
+* **Scenario 3:** Tests that nicknames with conflicting DOBs are kept separate.
+* **Scenario 4:** Tests the blank DOB rules (`Duplicate` vs `Potential Duplicate`).
+* **Scenario 5:** Tests cluster splitting and suffixing for conflicting countries.
+* **Scenario 6:** Tests that records isolated by a country split are successfully saved by the "Lock-In" boundary.
+* **Scenario 7:** Tests that true unique records bypass all matching and cleanly land in Out-Scope.
