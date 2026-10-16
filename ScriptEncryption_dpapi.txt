@@ -1,3 +1,18 @@
+# submodule.py
+
+def greet():
+    print("Hello from the submodule!")
+
+def calculate(a, b):
+    return a + b
+
+def run():
+    greet()
+    result = calculate(10, 20)
+    print("Result:", result)
+
+
+
 
 from pathlib import Path as p
 from cryptography.fernet import Fernet as f
