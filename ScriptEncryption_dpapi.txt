@@ -1,0 +1,87 @@
+
+from pathlib import Path as p
+from cryptography.fernet import Fernet as f
+import win32crypt as w
+import os as o
+
+try:
+    a = p(__file__).resolve().parent
+except NameError:
+    a = p(o.getcwd())
+
+b = a / "encysubmdl.py"
+c = a / "encysubmdl.enc"
+d = a / "secret.dpapi"
+
+if not b.exists():
+    raise FileNotFoundError(f"Missing: {b}")
+
+if c.exists() or d.exists():
+    raise FileExistsError("Output already exists.")
+
+e = f.generate_key()
+g = f(e)
+
+h = g.encrypt(b.read_bytes())
+
+i = w.CryptProtectData(
+    e,
+    "MyPythonApp encryption key",
+    None,
+    None,
+    None,
+    0
+)
+
+d.write_bytes(i)
+c.write_bytes(h)
+
+print("Completed.")
+
+
+from pathlib import Path as p
+import win32crypt as w
+from cryptography.fernet import Fernet as f, InvalidToken as t
+import os as o
+
+try:
+    a = p(__file__).resolve().parent
+except NameError:
+    a = p(o.getcwd())
+
+
+def x():
+    b = (a / "secret.dpapi").read_bytes()
+    c = (a / "encysubmdl.enc").read_bytes()
+
+    _, d = w.CryptUnprotectData(
+        b, None, None, None, 0
+    )
+
+    e = f(d).decrypt(c)
+
+    g = {
+        "__name__": "protected_submodule",
+        "__file__": "<encrypted submodule>",
+    }
+
+    exec(
+        compile(e, "<encrypted submodule>", "exec"),
+        g
+    )
+
+    return g
+
+
+if __name__ == "__main__":
+    try:
+        h = x()
+        h["greet"]()
+        print(h["calculate"](100, 200))
+
+    except (OSError, t) as i:
+        print("Unable to load  module:", i)
+
+    except Exception as i:
+        print("Module execution failed:", i)
+
